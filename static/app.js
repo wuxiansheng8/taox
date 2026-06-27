@@ -192,18 +192,25 @@ createApp({
         }
 
         function drawChart(chartData) {
-            const ctx = document.getElementById("metricsChart");
-            if (!ctx) return;
+            const canvas = document.getElementById("metricsChart");
+            if (!canvas) return;
             
-            if (chartInstance) {
+            // 如果已存在图表实例，且其绑定的 canvas 就是当前 DOM 中的 canvas，则直接更新数据
+            if (chartInstance && chartInstance.ctx && chartInstance.ctx.canvas === canvas) {
                 chartInstance.data.labels = chartData.labels;
                 chartInstance.data.datasets[0].data = chartData.success;
                 chartInstance.data.datasets[1].data = chartData.failure;
                 chartInstance.update();
                 return;
             }
+            
+            // 否则（例如切换 Tab 导致旧 canvas 销毁重建），销毁旧实例以防冲突，并重新初始化
+            if (chartInstance) {
+                chartInstance.destroy();
+                chartInstance = null;
+            }
 
-            chartInstance = new Chart(ctx.getContext("2d"), {
+            chartInstance = new Chart(canvas.getContext("2d"), {
                 type: "line",
                 data: {
                     labels: chartData.labels,
