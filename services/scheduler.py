@@ -303,7 +303,7 @@ async def scheduler_loop():
                 if target_media_tweet.media:
                     for media_item in target_media_tweet.media:
                         if media_item.type == "photo":
-                            media_list.append({"type": "photo", "url": media_item.media_url_https})
+                            media_list.append({"type": "photo", "url": media_item.media_url})
                         elif media_item.type in ["video", "animated_gif"]:
                             if hasattr(media_item, "streams") and media_item.streams:
                                 media_list.append({"type": "video", "url": media_item.streams[-1].url})
