@@ -57,6 +57,7 @@ def init_db(admin_username="admin", admin_password_hash=""):
         account_used TEXT
     )
     """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_metrics_timestamp ON metrics (timestamp)")
 
     # 5. 已发送推文去重表
     cursor.execute("""

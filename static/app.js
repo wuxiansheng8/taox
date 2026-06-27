@@ -573,6 +573,11 @@ createApp({
                     logEventSource = null;
                 }
             }
+
+            // 切换回运行看板 Tab 时，立即执行一次拉取和绘图，消除 5 秒轮询延迟
+            if (tab === "dashboard") {
+                fetchDashboardData();
+            }
         }
 
         function startDashboardPolling() {

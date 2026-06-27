@@ -247,6 +247,10 @@ def cleanup_old_data(days_threshold=3):
     cursor.execute("DELETE FROM pending_tweets WHERE timestamp < ?", (cutoff_time,))
     deleted_pending = cursor.rowcount
     
+    # 3. 清理 3 天前的统计指标历史数据，维持数据库的高速检索性能
+    cursor.execute("DELETE FROM metrics WHERE timestamp < ?", (cutoff_time,))
+    deleted_metrics = cursor.rowcount
+    
     conn.commit()
     conn.close()
     
