@@ -274,6 +274,12 @@ async def scheduler_loop():
                     raw_text = tweet.text
                     target_media_tweet = tweet
                 
+                # 剔除主推文文本中由推特原生附加的媒体短链接（t.co），保持排版极度清爽
+                if target_media_tweet.media:
+                    for media_item in target_media_tweet.media:
+                        if hasattr(media_item, "url") and media_item.url:
+                            raw_text = raw_text.replace(media_item.url, "").strip()
+                
                 # 确定引用推文（如果是转发，需要检查被转发的推文是否是引用推文）
                 quoted_tweet = None
                 active_tweet_for_quote = retweeted_tweet if retweeted_tweet else tweet
@@ -290,6 +296,12 @@ async def scheduler_loop():
                     q_username = q_user.screen_name
                     q_display_name = q_user.name
                     quoted_raw_text = quoted_tweet.text
+                    
+                    # 同时也剔除引用推文中的媒体短链接
+                    if quoted_tweet.media:
+                        for media_item in quoted_tweet.media:
+                            if hasattr(media_item, "url") and media_item.url:
+                                quoted_raw_text = quoted_raw_text.replace(media_item.url, "").strip()
                     
                     # 检查被引用者是否有备注
                     q_remark_info = remarks_cache.get(q_username.lower())

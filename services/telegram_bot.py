@@ -136,7 +136,7 @@ async def send_text_chunks(token: str, chat_id: str, text: str, reply_markup: Di
             "chat_id": chat_id,
             "text": chunk,
             "parse_mode": "HTML",
-            "disable_web_page_preview": False
+            "disable_web_page_preview": True  # 🎨 禁用网页预览，防止普通网页外链导致排版凌乱
         }
         # 仅在最后一个文本分片上挂载“查看原文”按钮
         if i == len(chunks) - 1 and reply_markup:
@@ -147,7 +147,7 @@ async def send_text_chunks(token: str, chat_id: str, text: str, reply_markup: Di
             return False
     return True
 
-async def send_media(token: str, chat_id: str, caption: str, media_urls: List[Dict[str, str]]) -> bool:
+async def send_media(token: str, chat_id: str, caption: str, media_urls: List[Dict[str, str]], reply_markup: Dict[str, Any] = None) -> bool:
     """
     发送多媒体资源（支持单图/单视频、多图/多视频组），支持下载并打包为 multipart/form-data
     1. 数量 = 1：调用 sendPhoto 或 sendVideo (兼容性最佳，API 规范)
@@ -191,6 +191,9 @@ async def send_media(token: str, chat_id: str, caption: str, media_urls: List[Di
                 if caption:
                     data["caption"] = caption
                     data["parse_mode"] = "HTML"
+                if reply_markup:
+                    import json
+                    data["reply_markup"] = json.dumps(reply_markup)
                     
                 return await _execute_tg_api_call(api_url, data=data, files=files)
 
@@ -288,12 +291,12 @@ async def test_telegram_connection(token: str, chat_id: str) -> bool:
 async def send_tweet_to_telegram(token: str, chat_id: str, text: str, media_urls: List[Dict[str, str]] = None, tweet_url: str = None) -> bool:
     """
     向 Telegram 发送消息，完美支持文字、单图、多图（Media Group）以及视频。
-    并且支持在消息底部挂载原生态的“查看原文 ↗”内联按钮。
+    尽可能挂载底部的“查看原文”巨型内联按钮。
     """
     if not token or not chat_id:
         return False
 
-    # 1. 构造 Telegram 行内键盘按钮 (用于无媒体及独立发正文消息)
+    # 1. 构造满宽巨型按钮
     reply_markup = None
     if tweet_url:
         reply_markup = {
@@ -304,36 +307,40 @@ async def send_tweet_to_telegram(token: str, chat_id: str, text: str, media_urls
             ]
         }
 
-    # 2. 无媒体情况
+    # 2. 无媒体情况：直接发纯文本（带按钮，且禁用网页预览）
     if not media_urls:
         return await send_text_chunks(token, chat_id, text, reply_markup)
 
-    # 3. 预先拼接带链接的最终 Caption 文本，以其最终长度决定发送策略
+    # 3. 情况 A：如果是单个媒体 (单图或单视频)，直接带按钮发送！
+    if len(media_urls) == 1:
+        if len(text) <= CAPTION_LIMIT:
+            success = await send_media(token, chat_id, text, media_urls, reply_markup)
+            if success:
+                return True
+            return await send_text_chunks(token, chat_id, text + "\n\n⚠️ (多媒体下载/发送失败，已降级为纯文本)", reply_markup)
+        else:
+            # 文本过长，先发正文（带按钮），再发单媒体
+            text_ok = await send_text_chunks(token, chat_id, text, reply_markup)
+            if not text_ok:
+                return False
+            await send_media(token, chat_id, "", media_urls)
+            return True
+
+    # 4. 情况 B：如果是多个媒体 (多图相册，Telegram 强行禁止挂载按钮)
+    # 此时我们降级在首张图的文字尾部拼接“🔗 查看原文”文本超链接
     caption_text = text
     if tweet_url:
         caption_text = f"{text}\n\n🔗 <a href='{tweet_url}'>查看原文</a>"
 
-    # 如果最终的 Caption 长度在 1000 字符以内，走完美的图文合一发送
     if len(caption_text) <= CAPTION_LIMIT:
         success = await send_media(token, chat_id, caption_text, media_urls)
         if success:
             return True
-        # 降级：多媒体包发送失败时，降级发纯文本，确保字先送达
-        print("[Telegram警告] 媒体包发送失败，正在降级为纯文本发送...")
         return await send_text_chunks(token, chat_id, text + "\n\n⚠️ (多媒体下载/发送失败，已降级为纯文本)", reply_markup)
-
-    # 4. 如果最终的 Caption 长度超过了 1000 字符，自动分拆：先发完整正文（挂载按钮），再发媒体组
-    print(f"[Telegram通知] 发现长推文或链接拼接后超限 ({len(caption_text)} 字符) 并带有媒体，已自动采用【先发正文，再发媒体】的拆分投递...")
-    # 发送正文时挂载“查看原文”按钮
-    text_ok = await send_text_chunks(token, chat_id, text, reply_markup)
-    if not text_ok:
-        return False
-
-    # 正文发送成功，紧随其后发送不带 caption 的媒体组
-    media_ok = await send_media(token, chat_id, "", media_urls)
-    if not media_ok:
-        # 如果文本发出去了但媒体失败了，我们依然返回 True，以防重试机制导致文本被不断重复发送
-        print("[Telegram警告] 正文发送成功，但后续媒体发送失败。")
+    else:
+        # 文本过长，先发正文（带按钮），再发相册
+        text_ok = await send_text_chunks(token, chat_id, text, reply_markup)
+        if not text_ok:
+            return False
+        await send_media(token, chat_id, "", media_urls)
         return True
-        
-    return True
