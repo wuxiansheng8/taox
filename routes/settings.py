@@ -16,7 +16,6 @@ class SettingsUpdate(BaseModel):
     tg_token: str = Field("")
     tg_chat_id: str = Field("")
     polling_interval: int = Field(10, ge=5) # 频率最小限制在 5 秒以上
-    twitter_list_id: str = Field("")
     
     translate_enabled: int = Field(0, description="0禁用，1启用")
     translate_provider_primary: str = Field("google")

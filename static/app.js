@@ -52,7 +52,6 @@ createApp({
             tg_token: "",
             tg_chat_id: "",
             polling_interval: 10,
-            twitter_list_id: "",
             translate_enabled: 0,
             translate_provider_primary: "google",
             translate_provider_backup: "google",

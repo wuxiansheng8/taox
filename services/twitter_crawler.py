@@ -36,10 +36,8 @@ async def test_account_and_proxy(username: str, password: str, email: str, proxy
             "ct0": secrets.token_hex(16)
         })
         
-        # 尝试获取该用户的基本信息，验证 Token 是否有效且与用户名对应
-        user = await client.get_user_by_screen_name(username)
-        if not user:
-            return False, "凭证校验失败，未获取到对应用户信息"
+        # 强行获取一次 Timeline，Token 如果失效或不存在，此步骤必抛出 401/403 异常
+        await client.get_latest_timeline(count=1)
             
         # 登录成功，写入 Cookie
         client.save_cookies(cookie_path)
