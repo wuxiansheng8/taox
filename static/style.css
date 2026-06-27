@@ -300,6 +300,11 @@ body {
     font-family: inherit;
 }
 
+.form-group select option {
+    background-color: #1a202c;
+    color: #fff;
+}
+
 .form-group input:focus,
 .form-group select:focus {
     outline: none;
