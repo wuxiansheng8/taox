@@ -273,8 +273,10 @@
                                 <input type="number" v-model="settings.polling_interval" min="5" placeholder="不能低于5秒">
                             </div>
                             <div class="form-group">
-                                <label>被监控的推特 List ID</label>
-                                <input type="text" v-model="settings.twitter_list_id" placeholder="推特网页 URL 中的列表数字 ID">
+                                <label>📢 抓取源模式</label>
+                                <div style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 4px; font-size: 13px; color: #ccc; line-height: 1.5;">
+                                    ℹ️ 系统已配置为抓取您小号的<b>「正在关注 (Following)」</b>列表，并自动按<b>「最新排序 (Latest)」</b>检索。请确保您填写的推特小号已关注了需要监控的目标用户。
+                                </div>
                             </div>
                             
                             <h3 class="margin-top-md">🔒 管理员密码修改</h3>

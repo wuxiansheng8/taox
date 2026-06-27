@@ -50,9 +50,9 @@ async def test_account_and_proxy(username: str, password: str, email: str, proxy
             return False, f"代理 IP 连接超时或失效: {err_msg}"
         return False, f"推特 Token 验证失败 (请确认 Token 没过期且用户名正确): {err_msg}"
 
-async def fetch_list_tweets(username: str, password: str, email: str, proxy: str, list_id: str) -> List[Any]:
+async def fetch_home_tweets(username: str, password: str, email: str, proxy: str) -> List[Any]:
     """
-    使用指定账号和绑定的代理抓取指定推特列表的推文。
+    使用指定账号和绑定的代理抓取该账号「正在关注(Following)」最新的时间线(Timeline)。
     此处 password 参数实际为 auth_token。
     """
     proxy_url = proxy.strip() if proxy else None
@@ -80,6 +80,6 @@ async def fetch_list_tweets(username: str, password: str, email: str, proxy: str
         client.save_cookies(cookie_path)
         print(f"[爬虫通知] 账号 {username} 成功通过 Auth Token 初始化并保存 Cookie。")
 
-    # 执行列表获取 (获取最新 30 条即可)
-    tweets = await client.get_list_tweets(list_id, count=30)
+    # 获取小号 Timeline（按最新排序的关注流，拉取最新 30 条）
+    tweets = await client.get_latest_timeline(count=30)
     return tweets

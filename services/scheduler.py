@@ -25,7 +25,7 @@ from database.crud import (
     add_pending_tweet, get_all_pending_tweets, remove_pending_tweet,
     cleanup_old_data
 )
-from services.twitter_crawler import fetch_list_tweets
+from services.twitter_crawler import fetch_home_tweets
 from services.translator import translate_text, TRANSLATOR_STATE, test_translation
 from services.telegram_bot import send_tweet_to_telegram
 
@@ -191,8 +191,6 @@ async def scheduler_loop():
         settings = get_settings()
         update_remarks_cache()
         
-        list_id = settings.get("twitter_list_id")
-        
         try:
             interval = int(settings.get("polling_interval", 10))
         except ValueError:
@@ -200,11 +198,6 @@ async def scheduler_loop():
             
         next_dt = datetime.now() + timedelta(seconds=interval)
         SCHEDULER_STATE["next_scan_time"] = next_dt.isoformat()
-
-        if not list_id:
-            SCHEDULER_STATE["last_error"] = "未配置推特 List ID"
-            await asyncio.sleep(5)
-            continue
             
         active_accounts = get_active_accounts()
         SCHEDULER_STATE["active_accounts_count"] = len(active_accounts)
@@ -224,9 +217,9 @@ async def scheduler_loop():
         proxy = account["proxy"]
         
         try:
-            print(f"[调度器] 开始使用账号 {username} 轮询列表 {list_id}...")
-            # 抓取推文 (获取最新 30 条)
-            tweets = await fetch_list_tweets(username, password, email, proxy, list_id)
+            print(f"[调度器] 开始使用账号 {username} 抓取「正在关注」最新 Timeline...")
+            # 抓取正在关注最新推文 (30 条)
+            tweets = await fetch_home_tweets(username, password, email, proxy)
             
             add_metric("success", account_used=username)
             update_account_status(username, "active")
