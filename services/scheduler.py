@@ -447,6 +447,8 @@ async def tg_sender_worker():
             header_lines = []
             if esc_remark_name:
                 header_lines.append(f"备注：【{esc_remark_name}】")
+            else:
+                header_lines.append("备注：")
             header_lines.append(f"用户名：{esc_author_display_name} @{esc_author_username}")
             if esc_retweet_author_name:
                 header_lines.append(f"转发自：{esc_retweet_author_name}")
@@ -468,7 +470,7 @@ async def tg_sender_worker():
                     q_body = esc_quoted_raw_text
                 quote_block = f"\n\n引用自：{esc_quoted_author_name}\n{q_body}"
                 
-            tg_text = f"{header}\n{body}{quote_block}"
+            tg_text = f"{header}\n\n{body}{quote_block}"
             
             # 5. 生成推文原始 URL 并调用发送
             tweet_url = f"https://x.com/{job['author_username']}/status/{tweet_id}"
