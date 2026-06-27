@@ -10,6 +10,7 @@ ENV/
 # Database and Log files (CRITICAL: Do NOT push settings/passwords/token to git!)
 *.db
 *.sqlite
+cookies/
 app.log
 *.log
 init_config.json
