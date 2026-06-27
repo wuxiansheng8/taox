@@ -4,9 +4,32 @@ import asyncio
 import secrets
 import logging
 from typing import Tuple, List, Any
+import hashlib
 from twikit import Client
+from httpx_curl_cffi import AsyncCurlTransport
 
 logger = logging.getLogger("taox")
+
+# 🌐 支持 impersonate 的主流浏览器 TLS/JA3 指纹与 User-Agent 绑定池
+BROWSER_TARGETS = [
+    ("chrome110", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36"),
+    ("chrome116", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"),
+    ("chrome120", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"),
+    ("firefox117", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/117.0"),
+    ("safari15_5", "Mozilla/5.0 (Macintosh; Intel Mac OS X 12_4) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.5 Safari/605.1.15")
+]
+
+def get_browser_fingerprint(username: str) -> Tuple[str, str]:
+    """
+    根据用户名确定性哈希分配一个浏览器指纹，保证：
+    1. 不同小号之间的指纹尽量不同（防关联）。
+    2. 单个小号每次运行分配到的指纹绝对一致（防设备漂移）。
+    """
+    if not username:
+        return BROWSER_TARGETS[0]
+    hasher = hashlib.md5(username.encode("utf-8"))
+    idx = int(hasher.hexdigest(), 16) % len(BROWSER_TARGETS)
+    return BROWSER_TARGETS[idx]
 
 def print(*args, **kwargs):
     """
@@ -36,7 +59,9 @@ async def test_account_and_proxy(username: str, password: str, email: str, proxy
     if proxy_url and not (proxy_url.startswith("http://") or proxy_url.startswith("https://")):
         return False, "代理格式必须以 http:// 或 https:// 开头"
 
-    client = Client(language="en-US", proxy=proxy_url)
+    impersonate_target, user_agent = get_browser_fingerprint(username)
+    transport = AsyncCurlTransport(impersonate=impersonate_target, proxy=proxy_url)
+    client = Client(language="en-US", proxy=proxy_url, transport=transport, user_agent=user_agent)
     auth_token = password.strip()
 
     try:
@@ -74,7 +99,9 @@ async def fetch_home_tweets(username: str, password: str, email: str, proxy: str
     此处 password 参数实际为 auth_token。
     """
     proxy_url = proxy.strip() if proxy else None
-    client = Client(language="en-US", proxy=proxy_url)
+    impersonate_target, user_agent = get_browser_fingerprint(username)
+    transport = AsyncCurlTransport(impersonate=impersonate_target, proxy=proxy_url)
+    client = Client(language="en-US", proxy=proxy_url, transport=transport, user_agent=user_agent)
     cookie_path = get_cookie_path(username)
     auth_token = password.strip()
     
