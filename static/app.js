@@ -353,11 +353,12 @@ createApp({
         }
 
         async function saveAccount() {
-            if (!accountForm.value.username || !accountForm.value.password || !accountForm.value.proxy) {
-                alert("为了确保账号安全，添加账号时用户名、Auth Token、独立的代理 IP 均为必填项！");
+            if (!accountForm.value.password || !accountForm.value.proxy) {
+                alert("为了确保账号安全，添加账号时 Auth Token、独立的代理 IP 均为必填项！");
                 return;
             }
-            // 自动填充 dummy 邮箱以兼容旧版后端数据接口
+            // 自动填充 dummy 数据以兼容旧版后端数据接口
+            accountForm.value.username = "auto";
             accountForm.value.email = "token@x.com";
             testingAccount.value = true;
             try {

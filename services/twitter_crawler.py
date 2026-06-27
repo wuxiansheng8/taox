@@ -37,26 +37,31 @@ async def test_account_and_proxy(username: str, password: str, email: str, proxy
         return False, "代理格式必须以 http:// 或 https:// 开头"
 
     client = Client(language="en-US", proxy=proxy_url)
-    cookie_path = get_cookie_path(username)
     auth_token = password.strip()
 
     try:
-        # 如果存在旧 Cookie，尝试先清理以保证是全新登录测试
-        if os.path.exists(cookie_path):
-            os.remove(cookie_path)
-            
         # 设置 auth_token 和 随机生成的 ct0 配合绕过 CSRF
         client.set_cookies({
             "auth_token": auth_token,
             "ct0": secrets.token_hex(16)
         })
         
-        # 强行获取一次 Timeline，Token 如果失效或不存在，此步骤必抛出 401/403 异常
+        # 1. 强行获取一次 Timeline，Token 如果失效或不存在，此步骤必抛出 401/403 异常
         await client.get_latest_timeline(count=1)
+        
+        # 2. 自动检测该 Token 对应的真实推特用户名
+        user_id = await client.user_id()
+        user = await client.get_user_by_id(user_id)
+        detected_username = user.screen_name
+        
+        cookie_path = get_cookie_path(detected_username)
+        # 如果存在旧 Cookie，尝试先清理
+        if os.path.exists(cookie_path):
+            os.remove(cookie_path)
             
         # 登录成功，写入 Cookie
         client.save_cookies(cookie_path)
-        return True, "验证通过"
+        return True, detected_username
     except Exception as e:
         err_msg = str(e)
         if "timeout" in err_msg.lower() or "connect" in err_msg.lower():

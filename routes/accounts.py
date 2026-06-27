@@ -27,31 +27,28 @@ async def create_or_update_account(data: AccountCreate):
     新增或修改账号配置。
     保存时会默认进行双重验证：即测试代理连通性以及 X 登录凭证。
     """
-    username = data.username.strip()
-    if username.startswith("@"):
-        username = username[1:]
-        
-    # 调用服务执行登录与代理校验
-    success, msg = await test_account_and_proxy(
-        username=username,
+    # 调用服务执行登录与代理校验，并获取由 Token 自动解析的推特用户名
+    success, result = await test_account_and_proxy(
+        username=data.username,
         password=data.password,
         email=data.email,
         proxy=data.proxy
     )
     
     if not success:
-        # 如果测试不通过，直接报错抛给前端展示，不保存入库
-        raise HTTPException(status_code=400, detail=msg)
+        # 如果测试不通过，result 是错误信息，直接报错抛给前端展示
+        raise HTTPException(status_code=400, detail=result)
         
-    # 验证通过，入库保存
+    # 验证通过，result 是自动检测到的真实用户名，入库保存
+    detected_username = result
     add_account(
-        username=username,
-        password=data.password,
-        email=data.email,
+        username=detected_username,
+        password=data.password, # 存储 auth_token
+        email=data.email,      # 虚拟 dummy 邮箱
         proxy=data.proxy,
         remark=data.remark
     )
-    return {"message": "账号及代理验证通过并保存成功"}
+    return {"message": f"成功识别并验证推特账号 @{detected_username}！配置已保存。"}
 
 @router.delete("/{username}", dependencies=[Depends(get_current_user)])
 async def remove_account(username: str):
