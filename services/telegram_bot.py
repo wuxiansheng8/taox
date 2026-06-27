@@ -170,7 +170,10 @@ async def send_media(token: str, chat_id: str, caption: str, media_urls: List[Di
                     
                     content_length = response.headers.get("Content-Length")
                     if content_length:
-                        size_mb = int(content_length) / (1024 * 1024)
+                        try:
+                            size_mb = int(content_length) / (1024 * 1024)
+                        except (ValueError, TypeError):
+                            size_mb = 0
                         if size_mb > 50.0:
                             print(f"[Telegram警告] 单个媒体文件体积超限 ({size_mb:.1f}MB > 50MB)，放弃发送该媒体。")
                             return False
@@ -206,7 +209,10 @@ async def send_media(token: str, chat_id: str, caption: str, media_urls: List[Di
                     
                     content_length = response.headers.get("Content-Length")
                     if content_length:
-                        size_mb = int(content_length) / (1024 * 1024)
+                        try:
+                            size_mb = int(content_length) / (1024 * 1024)
+                        except (ValueError, TypeError):
+                            size_mb = 0
                         if size_mb > 50.0:
                             print(f"[Telegram警告] 媒体包成员 {i} 文件大小超限 ({size_mb:.1f}MB > 50MB)，跳过下载。")
                             continue

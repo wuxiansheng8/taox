@@ -2,8 +2,23 @@
 import os
 import asyncio
 import secrets
+import logging
 from typing import Tuple, List, Any
 from twikit import Client
+
+logger = logging.getLogger("taox")
+
+def print(*args, **kwargs):
+    """
+    重写模块级 print，智能路由到 Logging 以供 Web 端 SSE 实时捕获。
+    """
+    msg = " ".join(str(arg) for arg in args)
+    if "错误" in msg or "error" in msg.lower():
+        logger.error(msg)
+    elif "警告" in msg or "warn" in msg.lower():
+        logger.warning(msg)
+    else:
+        logger.info(msg)
 
 COOKIES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "cookies")
 os.makedirs(COOKIES_DIR, exist_ok=True)
