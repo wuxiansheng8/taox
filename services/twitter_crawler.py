@@ -61,7 +61,13 @@ async def test_account_and_proxy(username: str, password: str, email: str, proxy
 
     impersonate_target, user_agent = get_browser_fingerprint(username)
     transport = AsyncCurlTransport(impersonate=impersonate_target, proxy=proxy_url)
-    client = Client(language="en-US", proxy=proxy_url, transport=transport, user_agent=user_agent)
+    headers = {
+        "User-Agent": user_agent,
+        "Accept": "*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://x.com"
+    }
+    client = Client(language="en-US", proxy=proxy_url, transport=transport, user_agent=user_agent, headers=headers)
     auth_token = password.strip()
 
     try:
@@ -101,7 +107,13 @@ async def fetch_home_tweets(username: str, password: str, email: str, proxy: str
     proxy_url = proxy.strip() if proxy else None
     impersonate_target, user_agent = get_browser_fingerprint(username)
     transport = AsyncCurlTransport(impersonate=impersonate_target, proxy=proxy_url)
-    client = Client(language="en-US", proxy=proxy_url, transport=transport, user_agent=user_agent)
+    headers = {
+        "User-Agent": user_agent,
+        "Accept": "*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://x.com"
+    }
+    client = Client(language="en-US", proxy=proxy_url, transport=transport, user_agent=user_agent, headers=headers)
     cookie_path = get_cookie_path(username)
     auth_token = password.strip()
     

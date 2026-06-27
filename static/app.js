@@ -42,7 +42,8 @@ createApp({
             password: "",
             email: "",
             proxy: "",
-            remark: ""
+            remark: "",
+            skip_verify: false
         });
 
         // 全局配置与 AI 设置
@@ -357,8 +358,14 @@ createApp({
                 alert("为了确保账号安全，添加账号时 Auth Token、独立的代理 IP 均为必填项！");
                 return;
             }
-            // 自动填充 dummy 数据以兼容旧版后端数据接口
-            accountForm.value.username = "auto";
+            if (accountForm.value.skip_verify) {
+                if (!accountForm.value.username || accountForm.value.username.trim() === "") {
+                    alert("当选择「跳过验证直接保存」时，推特用户名（Username）为必填项！");
+                    return;
+                }
+            } else {
+                accountForm.value.username = "auto";
+            }
             accountForm.value.email = "token@x.com";
             testingAccount.value = true;
             try {
@@ -366,7 +373,7 @@ createApp({
                 const data = await resp.json();
                 alert(data.message);
                 // 成功后清空表单
-                accountForm.value = { username: "", password: "", email: "", proxy: "", remark: "" };
+                accountForm.value = { username: "", password: "", email: "", proxy: "", remark: "", skip_verify: false };
                 fetchAccounts();
                 fetchDashboardData();
             } catch (e) {

@@ -13,6 +13,7 @@ class AccountCreate(BaseModel):
     email: str = Field(..., min_length=1)
     proxy: str = Field("", description="格式: http://user:pass@ip:port")
     remark: str = Field("")
+    skip_verify: bool = Field(False, description="是否跳过联调校验强制保存")
 
 @router.get("", dependencies=[Depends(get_current_user)])
 async def list_accounts():
@@ -27,6 +28,16 @@ async def create_or_update_account(data: AccountCreate):
     新增或修改账号配置。
     保存时会默认进行双重验证：即测试代理连通性以及 X 登录凭证。
     """
+    if data.skip_verify:
+        add_account(
+            username=data.username.strip(),
+            password=data.password.strip(),
+            email=data.email.strip(),
+            proxy=data.proxy.strip(),
+            remark=data.remark.strip()
+        )
+        return {"message": f"已跳过验证，强制保存推特账号 @{data.username}！"}
+
     # 调用服务执行登录与代理校验，并获取由 Token 自动解析的推特用户名
     success, result = await test_account_and_proxy(
         username=data.username,
