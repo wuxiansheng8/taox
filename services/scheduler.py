@@ -284,7 +284,10 @@ async def scheduler_loop():
                 quoted_tweet = None
                 active_tweet_for_quote = retweeted_tweet if retweeted_tweet else tweet
                 
-                if hasattr(active_tweet_for_quote, 'quoted_tweet') and active_tweet_for_quote.quoted_tweet:
+                # 优先检查新版 Twikit 的 quote 属性，其次兼容旧版属性
+                if hasattr(active_tweet_for_quote, 'quote') and active_tweet_for_quote.quote:
+                    quoted_tweet = active_tweet_for_quote.quote
+                elif hasattr(active_tweet_for_quote, 'quoted_tweet') and active_tweet_for_quote.quoted_tweet:
                     quoted_tweet = active_tweet_for_quote.quoted_tweet
                 elif hasattr(active_tweet_for_quote, 'quoted_status') and active_tweet_for_quote.quoted_status:
                     quoted_tweet = active_tweet_for_quote.quoted_status
@@ -302,6 +305,14 @@ async def scheduler_loop():
                         for media_item in quoted_tweet.media:
                             if hasattr(media_item, "url") and media_item.url:
                                 quoted_raw_text = quoted_raw_text.replace(media_item.url, "").strip()
+
+                    # 清理主推文正文中，由推特原生附加的指向该引用推文的 t.co 链接
+                    if hasattr(target_media_tweet, "urls") and target_media_tweet.urls:
+                        for url_item in target_media_tweet.urls:
+                            expanded = url_item.get("expanded_url", "") if isinstance(url_item, dict) else getattr(url_item, "expanded_url", "")
+                            t_co = url_item.get("url") if isinstance(url_item, dict) else getattr(url_item, "url", "")
+                            if expanded and t_co and f"/status/{quoted_tweet.id}" in expanded:
+                                raw_text = raw_text.replace(t_co, "").strip()
                     
                     # 检查被引用者是否有备注
                     q_remark_info = remarks_cache.get(q_username.lower())
@@ -310,10 +321,14 @@ async def scheduler_loop():
                     else:
                         quoted_author_name = f"{q_display_name} (@{q_username})"
                 
-                # 提取媒体资源
+                # 提取媒体资源 (如果主推文无媒体但引用了带有媒体的推文，则取引用推文的媒体进行发送)
                 media_list = []
-                if target_media_tweet.media:
-                    for media_item in target_media_tweet.media:
+                media_source_tweet = target_media_tweet
+                if not media_source_tweet.media and quoted_tweet:
+                    media_source_tweet = quoted_tweet
+
+                if media_source_tweet.media:
+                    for media_item in media_source_tweet.media:
                         if media_item.type == "photo":
                             media_list.append({"type": "photo", "url": media_item.media_url})
                         elif media_item.type in ["video", "animated_gif"]:
