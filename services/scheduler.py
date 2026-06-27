@@ -470,7 +470,7 @@ async def tg_sender_worker():
                     q_body = esc_quoted_raw_text
                 quote_block = f"\n\n引用自：{esc_quoted_author_name}\n{q_body}"
                 
-            tg_text = f"{header}\n\n{body}{quote_block}"
+            tg_text = f"\u200b\n{header}\n\n{body}{quote_block}"
             
             # 5. 生成推文原始 URL 并调用发送
             tweet_url = f"https://x.com/{job['author_username']}/status/{tweet_id}"
