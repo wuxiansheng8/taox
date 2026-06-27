@@ -12,7 +12,7 @@ from database.models import init_db
 from database.crud import get_setting
 from routes import auth, dashboard, accounts, remarks, settings
 from routes.auth import get_current_user, hash_password
-from services.scheduler import start_scheduler
+from services.scheduler import start_scheduler, stop_scheduler
 
 # 1. 初始化系统运行日志记录
 LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app.log")
@@ -160,6 +160,12 @@ async def startup_event():
     # 为了体验更好，默认启动扫描任务
     await start_scheduler()
     logger.info("[调度器] 后台推文扫描轮询服务启动成功。")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    logger.info("[系统停机] 正在优雅停止后台扫描与发送服务...")
+    await stop_scheduler()
+    logger.info("[系统停机] 所有后台服务已安全退出。")
 
 # 5. 托管网页前端静态资源
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
