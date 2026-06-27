@@ -189,12 +189,8 @@
                                 <input type="text" v-model="accountForm.username" placeholder="请输入 X 用户名">
                             </div>
                             <div class="form-group">
-                                <label>X (Twitter) 密码</label>
-                                <input type="password" v-model="accountForm.password" placeholder="请输入密码">
-                            </div>
-                            <div class="form-group">
-                                <label>X 账号绑定邮箱</label>
-                                <input type="email" v-model="accountForm.email" placeholder="登录验证时有概率需要输入邮箱">
+                                <label>Twitter Auth Token (auth_token)</label>
+                                <input type="password" v-model="accountForm.password" placeholder="请输入从浏览器获取的 auth_token 值">
                             </div>
                             <div class="form-group">
                                 <label>专属 HTTP 代理 IP</label>

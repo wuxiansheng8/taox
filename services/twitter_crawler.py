@@ -1,6 +1,7 @@
 # services/twitter_crawler.py
 import os
 import asyncio
+import secrets
 from typing import Tuple, List, Any
 from twikit import Client
 
@@ -13,7 +14,7 @@ def get_cookie_path(username: str) -> str:
 async def test_account_and_proxy(username: str, password: str, email: str, proxy: str = None) -> Tuple[bool, str]:
     """
     保存时默认联调测试：验证代理连通性及推特账号登录凭证。
-    测试成功会直接保存/更新本地 Cookie。
+    此处 password 参数实际传入的是 auth_token。
     """
     # 代理格式化检验
     proxy_url = proxy.strip() if proxy else None
@@ -22,19 +23,24 @@ async def test_account_and_proxy(username: str, password: str, email: str, proxy
 
     client = Client(language="en-US", proxy=proxy_url)
     cookie_path = get_cookie_path(username)
+    auth_token = password.strip()
 
-    # 尝试登录测试
     try:
         # 如果存在旧 Cookie，尝试先清理以保证是全新登录测试
         if os.path.exists(cookie_path):
             os.remove(cookie_path)
             
-        await client.login(
-            auth_info_1=username,
-            auth_info_2=email,
-            password=password
-        )
+        # 设置 auth_token 和 随机生成的 ct0 配合绕过 CSRF
+        client.set_cookies({
+            "auth_token": auth_token,
+            "ct0": secrets.token_hex(16)
+        })
         
+        # 尝试获取该用户的基本信息，验证 Token 是否有效且与用户名对应
+        user = await client.get_user_by_screen_name(username)
+        if not user:
+            return False, "凭证校验失败，未获取到对应用户信息"
+            
         # 登录成功，写入 Cookie
         client.save_cookies(cookie_path)
         return True, "验证通过"
@@ -42,16 +48,17 @@ async def test_account_and_proxy(username: str, password: str, email: str, proxy
         err_msg = str(e)
         if "timeout" in err_msg.lower() or "connect" in err_msg.lower():
             return False, f"代理 IP 连接超时或失效: {err_msg}"
-        return False, f"推特凭证校验失败: {err_msg}"
+        return False, f"推特 Token 验证失败 (请确认 Token 没过期且用户名正确): {err_msg}"
 
 async def fetch_list_tweets(username: str, password: str, email: str, proxy: str, list_id: str) -> List[Any]:
     """
     使用指定账号和绑定的代理抓取指定推特列表的推文。
-    具备 Cookie 失效自动重新登录与自愈功能。
+    此处 password 参数实际为 auth_token。
     """
     proxy_url = proxy.strip() if proxy else None
     client = Client(language="en-US", proxy=proxy_url)
     cookie_path = get_cookie_path(username)
+    auth_token = password.strip()
     
     # 尝试载入 Cookie 启动
     logged_in = False
@@ -60,19 +67,18 @@ async def fetch_list_tweets(username: str, password: str, email: str, proxy: str
             client.load_cookies(cookie_path)
             logged_in = True
         except Exception as e:
-            print(f"[爬虫警告] 账号 {username} 载入 Cookie 失败: {e}，将尝试密码登录自愈。")
+            print(f"[爬虫警告] 账号 {username} 载入 Cookie 失败: {e}，将尝试使用 Token 重新加载。")
             if os.path.exists(cookie_path):
                 os.remove(cookie_path)
 
-    # 如果没有载入成功，执行密码登录
+    # 如果没有载入成功，使用 Token 重新设置
     if not logged_in:
-        await client.login(
-            auth_info_1=username,
-            auth_info_2=email,
-            password=password
-        )
+        client.set_cookies({
+            "auth_token": auth_token,
+            "ct0": secrets.token_hex(16)
+        })
         client.save_cookies(cookie_path)
-        print(f"[爬虫通知] 账号 {username} 成功通过密码登录并保存 Cookie。")
+        print(f"[爬虫通知] 账号 {username} 成功通过 Auth Token 初始化并保存 Cookie。")
 
     # 执行列表获取 (获取最新 30 条即可)
     tweets = await client.get_list_tweets(list_id, count=30)
