@@ -378,8 +378,7 @@
                     </div>
                     <div class="card log-card">
                         <div class="log-container" ref="logContainer">
-                            <div v-for="(log, idx) in logs" :key="idx" class="log-line" :class="getLogClass(log)">
-                                {{ log }}
+                            <div v-for="(log, idx) in logs" :key="idx" class="log-line" v-html="formatLog(log)">
                             </div>
                             <div v-if="logs.length === 0" class="text-center text-muted">暂无日志内容。</div>
                         </div>

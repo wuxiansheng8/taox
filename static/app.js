@@ -469,9 +469,12 @@ createApp({
             try {
                 const resp = await apiRequest("/api/logs?lines=200");
                 const data = await resp.json();
-                logs.value = data.logs;
+                logs.value = data.logs.reverse(); // 🎨 新日志在最上面
                 await nextTick();
-                scrollLogsToBottom();
+                const container = logContainer.value;
+                if (container) {
+                    container.scrollTop = 0; // 默认将滚动条置于最上方看最新日志
+                }
             } catch (e) {
                 console.error(e.message);
             }
@@ -487,17 +490,30 @@ createApp({
             }
         }
 
-        function getLogClass(line) {
-            if (line.includes("[ERROR]") || line.includes("failed")) return "log-error";
-            if (line.includes("[WARNING]") || line.includes("warn")) return "log-warning";
-            return "log-info";
+        function escapeHtml(str) {
+            return str
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
         }
 
-        function scrollLogsToBottom() {
-            const container = logContainer.value;
-            if (container) {
-                container.scrollTop = container.scrollHeight;
+        function formatLog(log) {
+            const regex = /^(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}(?:,\d{3})?)\s\[(INFO|WARN|WARNING|ERROR|SUCCESS)\]\s(.*)$/;
+            const match = log.match(regex);
+            if (match) {
+                const timestamp = match[1];
+                const rawLevel = match[2];
+                const message = match[3];
+                
+                // 将 WARNING 映射为 WARN 渲染
+                const displayLevel = rawLevel === "WARNING" ? "WARN" : rawLevel;
+                const levelClass = "level-" + displayLevel.toLowerCase();
+                
+                return `<span class="log-time">[${timestamp}]</span> <span class="log-level ${levelClass}">[${displayLevel}]</span> <span class="log-text">${escapeHtml(message)}</span>`;
             }
+            return `<span class="log-text">${escapeHtml(log)}</span>`;
         }
 
         // --- 页面轮询控制 ---
@@ -516,15 +532,22 @@ createApp({
                 logEventSource.onmessage = (event) => {
                     try {
                         const data = JSON.parse(event.data);
-                        logs.value.push(data.log);
+                        const container = logContainer.value;
+                        // 判定是否在最顶部（前10像素内），如果是则判定为需要锁定顶部展示最新日志
+                        const wasAtTop = container ? container.scrollTop < 10 : true;
+
+                        logs.value.unshift(data.log); // 新日志插到最前面
                         
                         // 前端展示最大限制在 1000 行，避免卡顿
                         if (logs.value.length > 1000) {
-                            logs.value.shift();
+                            logs.value.pop(); // 移除最底部（最旧）的一行
                         }
-                        nextTick(() => {
-                            scrollLogsToBottom();
-                        });
+                        
+                        if (wasAtTop && container) {
+                            nextTick(() => {
+                                container.scrollTop = 0;
+                            });
+                        }
                     } catch (e) {
                         console.error("解析日志事件失败:", e);
                     }
@@ -563,10 +586,7 @@ createApp({
             countdownIntervalId = null;
         }
 
-        // 监听视图中日志容器，保证有新日志时能滚动触底
-        watch(logs, () => {
-            nextTick(scrollLogsToBottom);
-        });
+        // 默认不在 logs 上加 watch 触发强制滚动，给用户完全的滚动自由
 
         onMounted(() => {
             checkAuth();
@@ -611,7 +631,7 @@ createApp({
             logs,
             logContainer,
             clearLogs,
-            getLogClass,
+            formatLog,
             fetchLogs,
             handleLogin,
             handleLogout

@@ -529,3 +529,41 @@ input[type="checkbox"] {
     margin-top: 0.75rem;
     text-align: center;
 }
+
+/* 🎨 运行日志特定事件颜色着色 (完美契合图二效果) */
+.log-line {
+    white-space: pre-wrap;
+    word-break: break-all;
+    line-height: 1.6;
+    margin-bottom: 0.4rem;
+}
+
+.log-time {
+    color: #718096; /* 灰色时间 */
+    font-weight: normal;
+}
+
+.log-level {
+    font-weight: bold;
+    margin: 0 4px;
+}
+
+.level-info {
+    color: #00b0ff; /* 鲜艳蓝色/青色 */
+}
+
+.level-warn {
+    color: #e2b704; /* 鲜艳黄色/警告色 */
+}
+
+.level-error {
+    color: #ff5252; /* 鲜艳红色/错误色 */
+}
+
+.level-success {
+    color: #00e676; /* 鲜艳绿色/成功色 */
+}
+
+.log-text {
+    color: #e2e8f0; /* 灰白色正文文本 */
+}
