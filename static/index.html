@@ -43,8 +43,8 @@
                 </div>
                 <nav class="sidebar-menu">
                     <button class="menu-item" :class="{ active: currentTab === 'dashboard' }" @click="setTab('dashboard')">📊 运行看板</button>
-                    <button class="menu-item" :class="{ active: currentTab === 'remarks' }" @click="setTab('remarks')">🏷️ 监控备注</button>
                     <button class="menu-item" :class="{ active: currentTab === 'accounts' }" @click="setTab('accounts')">🔑 推特账号</button>
+                    <button class="menu-item" :class="{ active: currentTab === 'remarks' }" @click="setTab('remarks')">🏷️ 监控备注</button>
                     <button class="menu-item" :class="{ active: currentTab === 'settings' }" @click="setTab('settings')">⚙️ 系统与翻译</button>
                     <button class="menu-item" :class="{ active: currentTab === 'logs' }" @click="setTab('logs')">📋 运行日志</button>
                 </nav>
@@ -158,7 +158,7 @@
                                             <td><span class="text-cyan">{{ r.remark_name }}</span></td>
                                             <td>
                                                 <span class="badge" :class="r.is_highlight ? 'badge-success' : 'badge-secondary'">
-                                                    {{ r.is_highlight ? '帖子+回复(全)' : '帖子(仅发转引)' }}
+                                                    {{ r.is_highlight ? '帖子+回复(全)' : '帖子+转发+引用' }}
                                                 </span>
                                             </td>
                                             <td>
