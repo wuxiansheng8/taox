@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+ENV/
+
+# Database and Log files (CRITICAL: Do NOT push settings/passwords/token to git!)
+*.db
+*.sqlite
+app.log
+*.log
+init_config.json
+
+# IDEs
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp

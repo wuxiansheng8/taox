@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>X-TG 转发监控系统</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- 引入 Vue3 框架 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- 引入 Chart.js 用于24小时数据看板 -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div id="app" v-cloak>
+        <!-- 登录界面 -->
+        <div v-if="!authenticated" class="login-container">
+            <div class="login-card">
+                <h2>X-TG 监控后台登录</h2>
+                <div class="form-group">
+                    <label>管理员用户名</label>
+                    <input type="text" v-model="loginForm.username" placeholder="请输入用户名" @keyup.enter="handleLogin">
+                </div>
+                <div class="form-group">
+                    <label>登录密码</label>
+                    <input type="password" v-model="loginForm.password" placeholder="请输入密码" @keyup.enter="handleLogin">
+                </div>
+                <button class="btn btn-primary btn-block" @click="handleLogin" :disabled="loading">
+                    {{ loading ? '登录中...' : '立即登录' }}
+                </button>
+                <p v-if="loginError" class="error-text">{{ loginError }}</p>
+            </div>
+        </div>
+
+        <!-- 主体控制台 -->
+        <div v-else class="main-layout">
+            <!-- 侧边导航栏 -->
+            <aside class="sidebar">
+                <div class="sidebar-header">
+                    <h3>X-TG Forwarder</h3>
+                    <span class="badge" :class="is_running ? 'badge-success' : 'badge-danger'">
+                        {{ is_running ? '扫描运行中' : '扫描已暂停' }}
+                    </span>
+                </div>
+                <nav class="sidebar-menu">
+                    <button class="menu-item" :class="{ active: currentTab === 'dashboard' }" @click="setTab('dashboard')">📊 运行看板</button>
+                    <button class="menu-item" :class="{ active: currentTab === 'remarks' }" @click="setTab('remarks')">🏷️ 监控备注</button>
+                    <button class="menu-item" :class="{ active: currentTab === 'accounts' }" @click="setTab('accounts')">🔑 推特账号</button>
+                    <button class="menu-item" :class="{ active: currentTab === 'settings' }" @click="setTab('settings')">⚙️ 系统与翻译</button>
+                    <button class="menu-item" :class="{ active: currentTab === 'logs' }" @click="setTab('logs')">📋 运行日志</button>
+                </nav>
+                <div class="sidebar-footer">
+                    <button class="btn btn-danger btn-block" @click="handleLogout">退出登录</button>
+                </div>
+            </aside>
+
+            <!-- 控制台主体内容 -->
+            <main class="content-area">
+                <!-- 1. 运行看板 Tab -->
+                <section v-if="currentTab === 'dashboard'" class="tab-pane">
+                    <h2 class="page-title">📊 系统运行看板</h2>
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <span class="stat-label">轮询任务状态</span>
+                            <div class="stat-value-container">
+                                <span class="stat-value" :class="is_running ? 'text-success' : 'text-danger'">
+                                    {{ is_running ? '工作正常' : '已暂停' }}
+                                </span>
+                                <button class="btn btn-xs" :class="is_running ? 'btn-danger' : 'btn-success'" @click="toggleScheduler">
+                                    {{ is_running ? '暂停' : '启动' }}
+                                </button>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-label">下次扫描倒计时</span>
+                            <span class="stat-value text-cyan">{{ countdownText }}</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-label">当前挂载推特号</span>
+                            <span class="stat-value text-purple">{{ active_accounts_count }} 个</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-label">Telegram 通道</span>
+                            <span class="stat-value" :class="tg_configured ? 'text-success' : 'text-danger'">
+                                {{ tg_configured ? '配置正确' : '未配置' }}
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- 报错警报栏 -->
+                    <div v-if="last_error" class="alert alert-danger">
+                        <strong>⚠️ 运行中出现异常：</strong> {{ last_error }}
+                    </div>
+
+                    <!-- 24小时监控图表 -->
+                    <div class="card chart-card">
+                        <h3>📈 24小时数据统计（成功/失败频次分布）</h3>
+                        <div class="chart-container">
+                            <canvas id="metricsChart"></canvas>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 2. 监控备注 Tab -->
+                <section v-if="currentTab === 'remarks'" class="tab-pane">
+                    <div class="page-header-actions">
+                        <h2 class="page-title">🏷️ 监控别名与高亮设置</h2>
+                        <div class="btn-group">
+                            <button class="btn btn-secondary" @click="downloadTemplate">💾 下载模板</button>
+                            <button class="btn btn-secondary" @click="triggerImport">📤 批量导入</button>
+                            <button class="btn btn-secondary" @click="exportRemarks">📥 批量导出</button>
+                            <input type="file" id="importFile" ref="importFile" style="display: none" @change="handleImport" accept=".txt">
+                        </div>
+                    </div>
+
+                    <div class="grid-2col">
+                        <!-- 添加/修改备注 -->
+                        <div class="card">
+                            <h3>{{ editRemarkMode ? '🔧 修改监控备注' : '➕ 添加监控备注' }}</h3>
+                            <div class="form-group">
+                                <label>推特用户名 (无需带@)</label>
+                                <input type="text" v-model="remarkForm.username" placeholder="如 traininghone" :disabled="editRemarkMode">
+                            </div>
+                            <div class="form-group">
+                                <label>中文备注名</label>
+                                <input type="text" v-model="remarkForm.remark_name" placeholder="如 子网5">
+                            </div>
+                            <div class="form-group flex-row">
+                                <input type="checkbox" id="is_highlight" v-model="remarkForm.is_highlight" :true-value="1" :false-value="0">
+                                <label for="is_highlight" class="checkbox-label">
+                                    <strong>⭐ 高亮监控</strong> (开启后会额外监听抓取该用户的<b>回复帖</b>；不开启则仅抓取发帖、引用和转发)
+                                </label>
+                            </div>
+                            <div class="btn-group-right">
+                                <button v-if="editRemarkMode" class="btn btn-secondary" @click="cancelEditRemark">取消</button>
+                                <button class="btn btn-primary" @click="saveRemark">保存配置</button>
+                            </div>
+                        </div>
+
+                        <!-- 备注列表显示 -->
+                        <div class="card">
+                            <div class="card-header-flex">
+                                <h3>📋 监控备注库</h3>
+                                <span class="badge badge-purple">当前已备注：{{ remarksCount }} 个用户</span>
+                            </div>
+                            <div class="table-container">
+                                <table class="table">
+                                    <thead>
+                                        <tr>
+                                            <th>推特用户名</th>
+                                            <th>中文备注</th>
+                                            <th>抓取范围</th>
+                                            <th>操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="r in remarksList" :key="r.username">
+                                            <td>@{{ r.username }}</td>
+                                            <td><span class="text-cyan">{{ r.remark_name }}</span></td>
+                                            <td>
+                                                <span class="badge" :class="r.is_highlight ? 'badge-success' : 'badge-secondary'">
+                                                    {{ r.is_highlight ? '帖子+回复(全)' : '帖子(仅发转引)' }}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <button class="btn btn-xs btn-primary" @click="startEditRemark(r)">编辑</button>
+                                                <button class="btn btn-xs btn-danger" @click="deleteRemark(r.username)">删除</button>
+                                            </td>
+                                        </tr>
+                                        <tr v-if="remarksList.length === 0">
+                                            <td colspan="4" class="text-center text-muted">暂无备注配置，监控中将只显示原推特名。</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 3. 推特账号与代理管理 Tab -->
+                <section v-if="currentTab === 'accounts'" class="tab-pane">
+                    <h2 class="page-title">🔑 推特小号与代理绑定管理</h2>
+                    <div class="grid-2col">
+                        <!-- 添加/修改账号 -->
+                        <div class="card">
+                            <h3>➕ 配置推特小号与代理</h3>
+                            <p class="text-muted text-sm">出于推特安全风控，必须为每个小号配置各自独立的代理 IP。保存时将自动执行代理通断与推特凭证的双重联调测试，测试通过方可保存。</p>
+                            <div class="form-group">
+                                <label>X (Twitter) 用户名</label>
+                                <input type="text" v-model="accountForm.username" placeholder="请输入 X 用户名">
+                            </div>
+                            <div class="form-group">
+                                <label>X (Twitter) 密码</label>
+                                <input type="password" v-model="accountForm.password" placeholder="请输入密码">
+                            </div>
+                            <div class="form-group">
+                                <label>X 账号绑定邮箱</label>
+                                <input type="email" v-model="accountForm.email" placeholder="登录验证时有概率需要输入邮箱">
+                            </div>
+                            <div class="form-group">
+                                <label>专属 HTTP 代理 IP</label>
+                                <input type="text" v-model="accountForm.proxy" placeholder="格式: http://username:password@ip:port">
+                            </div>
+                            <div class="form-group">
+                                <label>账号备注</label>
+                                <input type="text" v-model="accountForm.remark" placeholder="如 备用号1">
+                            </div>
+                            <div class="btn-group-right">
+                                <button class="btn btn-primary" @click="saveAccount" :disabled="testingAccount">
+                                    {{ testingAccount ? '验证中(大概需要15秒)...' : '联调测试并保存' }}
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 账号池列表 -->
+                        <div class="card">
+                            <h3>📋 小号状态列表</h3>
+                            <div class="table-container">
+                                <table class="table">
+                                    <thead>
+                                        <tr>
+                                            <th>推特账号</th>
+                                            <th>状态</th>
+                                            <th>绑定的代理</th>
+                                            <th>备注</th>
+                                            <th>操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="acc in accountsList" :key="acc.username">
+                                            <td><b>@{{ acc.username }}</b></td>
+                                            <td>
+                                                <span class="badge" :class="{
+                                                    'badge-success': acc.status === 'active',
+                                                    'badge-danger': acc.status.startsWith('error')
+                                                }">
+                                                    {{ acc.status === 'active' ? '正常运行' : (acc.status === 'error_proxy' ? '代理失效' : 'Cookie失效') }}
+                                                </span>
+                                            </td>
+                                            <td class="text-sm">{{ acc.proxy || '直连' }}</td>
+                                            <td><span class="text-muted">{{ acc.remark || '-' }}</span></td>
+                                            <td>
+                                                <button class="btn btn-xs btn-danger" @click="deleteAccount(acc.username)">删除</button>
+                                            </td>
+                                        </tr>
+                                        <tr v-if="accountsList.length === 0">
+                                            <td colspan="5" class="text-center text-muted">请先添加推特账号，否则轮询将无法运行。</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 4. 系统设置与 AI 翻译 Tab -->
+                <section v-if="currentTab === 'settings'" class="tab-pane">
+                    <h2 class="page-title">⚙️ 系统推送与 AI 双通道配置</h2>
+                    <div class="grid-2col">
+                        <!-- 全局基础配置 -->
+                        <div class="card">
+                            <h3>✉️ Telegram 机器人配置</h3>
+                            <div class="form-group">
+                                <label>Telegram Bot Token</label>
+                                <input type="password" v-model="settings.tg_token" placeholder="形如 5864195159:AAFlm...">
+                            </div>
+                            <div class="form-group">
+                                <label>Telegram Chat ID</label>
+                                <input type="text" v-model="settings.tg_chat_id" placeholder="群组/频道ID，如 -100185938501">
+                            </div>
+                            <button class="btn btn-secondary" @click="testTG" :disabled="testingTG">
+                                {{ testingTG ? '测试中...' : '测试 Telegram 连通性' }}
+                            </button>
+
+                            <h3 class="margin-top-md">⏱️ 扫描参数设置</h3>
+                            <div class="form-group">
+                                <label>多账号轮询频率 (单位: 秒)</label>
+                                <input type="number" v-model="settings.polling_interval" min="5" placeholder="不能低于5秒">
+                            </div>
+                            <div class="form-group">
+                                <label>被监控的推特 List ID</label>
+                                <input type="text" v-model="settings.twitter_list_id" placeholder="推特网页 URL 中的列表数字 ID">
+                            </div>
+                            
+                            <h3 class="margin-top-md">🔒 管理员密码修改</h3>
+                            <div class="form-group">
+                                <label>新管理员用户名</label>
+                                <input type="text" v-model="settings.admin_username">
+                            </div>
+                            <div class="form-group">
+                                <label>新管理员密码 (不修改请留空)</label>
+                                <input type="password" v-model="settings.admin_password" placeholder="留空代表不修改">
+                            </div>
+                        </div>
+
+                        <!-- 翻译引擎配置 -->
+                        <div class="card">
+                            <div class="form-group flex-row">
+                                <input type="checkbox" id="translate_enabled" v-model="settings.translate_enabled" :true-value="1" :false-value="0">
+                                <label for="translate_enabled" class="checkbox-label"><strong>启用推文中文翻译功能</strong></label>
+                            </div>
+
+                            <div v-if="settings.translate_enabled == 1">
+                                <h3>🛠️ 翻译通道配置（主备自动降级切换）</h3>
+                                
+                                <div class="form-group">
+                                    <label>主用翻译通道 (Primary)</label>
+                                    <select v-model="settings.translate_provider_primary">
+                                        <option value="google">Google 免费翻译</option>
+                                        <option value="openai">OpenAI 格式中转</option>
+                                    </select>
+                                </div>
+                                
+                                <div v-if="settings.translate_provider_primary === 'openai'" class="nested-box">
+                                    <div class="form-group">
+                                        <label>API Key</label>
+                                        <input type="password" v-model="settings.openai_primary_api_key">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>中转接口 Base URL</label>
+                                        <input type="text" v-model="settings.openai_primary_base_url">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>翻译模型 (Model)</label>
+                                        <input type="text" v-model="settings.openai_primary_model">
+                                    </div>
+                                    <div class="btn-group">
+                                        <button class="btn btn-xs btn-secondary" @click="testTranslation('primary')">测试主用连通性</button>
+                                        <button class="btn btn-xs btn-secondary" @click="checkBalance('primary')">查询主用余额</button>
+                                    </div>
+                                </div>
+
+                                <div class="form-group margin-top-md">
+                                    <label>备用翻译通道 (Backup)</label>
+                                    <select v-model="settings.translate_provider_backup">
+                                        <option value="google">Google 免费翻译</option>
+                                        <option value="openai">OpenAI 格式中转</option>
+                                    </select>
+                                </div>
+
+                                <div v-if="settings.translate_provider_backup === 'openai'" class="nested-box">
+                                    <div class="form-group">
+                                        <label>API Key</label>
+                                        <input type="password" v-model="settings.openai_backup_api_key">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>中转接口 Base URL</label>
+                                        <input type="text" v-model="settings.openai_backup_base_url">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>翻译模型 (Model)</label>
+                                        <input type="text" v-model="settings.openai_backup_model">
+                                    </div>
+                                    <div class="btn-group">
+                                        <button class="btn btn-xs btn-secondary" @click="testTranslation('backup')">测试备用连通性</button>
+                                        <button class="btn btn-xs btn-secondary" @click="checkBalance('backup')">查询备用余额</button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="btn-group-right margin-top-md">
+                                <button class="btn btn-primary btn-block" @click="saveSettings">保存全部系统配置</button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 5. 运行日志 Tab -->
+                <section v-if="currentTab === 'logs'" class="tab-pane logs-pane">
+                    <div class="page-header-actions">
+                        <h2 class="page-title">📋 系统运行日志</h2>
+                        <div class="btn-group">
+                            <button class="btn btn-secondary" @click="fetchLogs">🔄 刷新日志</button>
+                            <button class="btn btn-danger" @click="clearLogs">🗑️ 清空日志</button>
+                        </div>
+                    </div>
+                    <div class="card log-card">
+                        <div class="log-container" ref="logContainer">
+                            <div v-for="(log, idx) in logs" :key="idx" class="log-line" :class="getLogClass(log)">
+                                {{ log }}
+                            </div>
+                            <div v-if="logs.length === 0" class="text-center text-muted">暂无日志内容。</div>
+                        </div>
+                    </div>
+                </section>
+            </main>
+        </div>
+    </div>
+
+    <!-- 业务核心 JS -->
+    <script src="app.js"></script>
+</body>
+</html>
