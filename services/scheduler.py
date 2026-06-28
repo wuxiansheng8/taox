@@ -185,24 +185,54 @@ def get_tweet_full_text(tweet_obj) -> str:
     if not tweet_obj:
         return ""
     if hasattr(tweet_obj, "_data") and tweet_obj._data:
-        note_tweet = tweet_obj._data.get("note_tweet")
-        if note_tweet:
-            note_results = note_tweet.get("note_tweet_results", {})
-            result = note_results.get("result", {})
-            text = result.get("text")
-            if text:
-                return text
-        
-        try:
-            from twikit.utils import find_dict
-            note_results = find_dict(tweet_obj._data, "note_tweet_results")
-            if note_results:
-                text = note_results[0].get("result", {}).get("text") if isinstance(note_results, list) else note_results.get("result", {}).get("text")
+        data = tweet_obj._data
+        if isinstance(data, dict):
+            # 1. 优先检查 root 顶层
+            note_tweet = data.get("note_tweet")
+            if note_tweet and isinstance(note_tweet, dict):
+                text = note_tweet.get("note_tweet_results", {}).get("result", {}).get("text")
                 if text:
                     return text
+            
+            # 2. 确认 result 是 dict 后再安全下钻检索
+            result_node = data.get("result")
+            if result_node and isinstance(result_node, dict):
+                note_tweet = result_node.get("note_tweet")
+                if note_tweet and isinstance(note_tweet, dict):
+                    text = note_tweet.get("note_tweet_results", {}).get("result", {}).get("text")
+                    if text:
+                        return text
+        
+        # 3. 前两者未果，执行受限有限递归（排除引用和转发子树）
+        try:
+            def safe_find_note_text(d):
+                if not isinstance(d, dict):
+                    return None
+                for skip_key in ("quoted_status_result", "retweeted_status_result", "quoted_status", "retweeted_status"):
+                    if skip_key in d:
+                        d = {k: v for k, v in d.items() if k != skip_key}
+                        break
+                if "note_tweet_results" in d:
+                    note_results = d["note_tweet_results"]
+                    if isinstance(note_results, dict):
+                        return note_results.get("result", {}).get("text")
+                for v in d.values():
+                    if isinstance(v, dict):
+                        res = safe_find_note_text(v)
+                        if res: return res
+                    elif isinstance(v, list):
+                        for item in v:
+                            if isinstance(item, dict):
+                                res = safe_find_note_text(item)
+                                if res: return res
+                return None
+            text = safe_find_note_text(tweet_obj._data)
+            if text:
+                return text
         except Exception:
             pass
     return tweet_obj.text if hasattr(tweet_obj, "text") else ""
+
 
 async def scheduler_loop():
     """
