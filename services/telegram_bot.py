@@ -149,131 +149,47 @@ async def send_text_chunks(token: str, chat_id: str, text: str, reply_markup: Di
 
 async def send_media(token: str, chat_id: str, caption: str, media_urls: List[Dict[str, str]], reply_markup: Dict[str, Any] = None) -> bool:
     """
-    发送多媒体资源（支持单图/单视频、多图/多视频组），支持下载并打包为 multipart/form-data
-    1. 数量 = 1：调用 sendPhoto 或 sendVideo (兼容性最佳，API 规范)
-    2. 数量 > 1：调用 sendMediaGroup
+    发送单张图片，支持下载并打包为 multipart/form-data 发送
     """
     if not media_urls:
         return False
         
     try:
-        # 1. 单个媒体发送 (sendPhoto 或 sendVideo)
-        if len(media_urls) == 1:
-            media_item = media_urls[0]
-            url = media_item["url"]
-            m_type = media_item["type"] # 'photo' 或 'video'
-            
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                async with client.stream("GET", url) as response:
-                    if response.status_code != 200:
-                        return False
-                    
-                    content_length = response.headers.get("Content-Length")
-                    if content_length:
-                        try:
-                            size_mb = int(content_length) / (1024 * 1024)
-                        except (ValueError, TypeError):
-                            size_mb = 0
-                        if size_mb > 50.0:
-                            print(f"[Telegram警告] 单个媒体文件体积超限 ({size_mb:.1f}MB > 50MB)，放弃发送该媒体。")
-                            return False
-                    
-                    file_content = await response.aread()
-                
-                file_name = "media.jpg" if m_type == "photo" else "media.mp4"
-                file_field = "photo" if m_type == "photo" else "video"
-                files = {file_field: (file_name, file_content)}
-                
-                api_method = "sendPhoto" if m_type == "photo" else "sendVideo"
-                api_url = f"https://api.telegram.org/bot{token}/{api_method}"
-                
-                data = {"chat_id": chat_id}
-                if caption:
-                    data["caption"] = caption
-                    data["parse_mode"] = "HTML"
-                if reply_markup:
-                    import json
-                    data["reply_markup"] = json.dumps(reply_markup)
-                    
-                return await _execute_tg_api_call(api_url, data=data, files=files)
-
-        # 2. 多个媒体发送 (sendMediaGroup)
-        files = {}
-        media_group = []
+        media_item = media_urls[0]
+        url = media_item["url"]
         
         async with httpx.AsyncClient(timeout=30.0) as client:
-            for i, media_item in enumerate(media_urls):
-                url = media_item["url"]
-                m_type = media_item["type"] # 'photo' 或 'video'
-
-                async with client.stream("GET", url) as response:
-                    if response.status_code != 200:
-                        continue
-                    
-                    content_length = response.headers.get("Content-Length")
-                    if content_length:
-                        try:
-                            size_mb = int(content_length) / (1024 * 1024)
-                        except (ValueError, TypeError):
-                            size_mb = 0
-                        if size_mb > 50.0:
-                            print(f"[Telegram警告] 媒体包成员 {i} 文件大小超限 ({size_mb:.1f}MB > 50MB)，跳过下载。")
-                            continue
-                    
-                    file_content = await response.aread()
-
-                file_name = f"media_{i}.jpg" if m_type == "photo" else f"media_{i}.mp4"
-                file_key = f"file_{i}"
-                files[file_key] = (file_name, file_content)
-
-                media_group_item = {
-                    "type": m_type,
-                    "media": f"attach://{file_key}"
-                }
+            async with client.stream("GET", url) as response:
+                if response.status_code != 200:
+                    return False
                 
-                # 仅在第一个媒体中添加 Caption (如果提供)
-                if i == 0 and caption:
-                    media_group_item["caption"] = caption
-                    media_group_item["parse_mode"] = "HTML"
-
-                media_group.append(media_group_item)
-
-        if not media_group:
-            return False
-
-        # 3. 边界二次检查：如果下载或超过 50MB 过滤后，媒体包内仅剩 1 个文件，自动改走单媒体投递通道
-        if len(media_group) == 1:
-            single_item = media_group[0]
-            m_type = single_item["type"] # 'photo' 或 'video'
+                content_length = response.headers.get("Content-Length")
+                if content_length:
+                    try:
+                        size_mb = int(content_length) / (1024 * 1024)
+                    except (ValueError, TypeError):
+                        size_mb = 0
+                    if size_mb > 50.0:
+                        print(f"[Telegram警告] 图片文件体积超限 ({size_mb:.1f}MB > 50MB)，放弃发送该媒体。")
+                        return False
+                
+                file_content = await response.aread()
             
-            # 从缓存字典中取出唯一一个文件键值对
-            file_key = list(files.keys())[0]
-            file_name, file_bytes = files[file_key]
-            
-            file_field = "photo" if m_type == "photo" else "video"
-            single_files = {file_field: (file_name, file_bytes)}
-            
-            api_method = "sendPhoto" if m_type == "photo" else "sendVideo"
-            api_url = f"https://api.telegram.org/bot{token}/{api_method}"
+            files = {"photo": ("media.jpg", file_content)}
+            api_url = f"https://api.telegram.org/bot{token}/sendPhoto"
             
             data = {"chat_id": chat_id}
             if caption:
                 data["caption"] = caption
                 data["parse_mode"] = "HTML"
+            if reply_markup:
+                import json
+                data["reply_markup"] = json.dumps(reply_markup)
                 
-            print(f"[Telegram通知] 过滤后媒体包仅剩 1 个文件，系统已自动转换为【{api_method}】单通道安全发送。")
-            return await _execute_tg_api_call(api_url, data=data, files=single_files)
-
-        # 4. 正常多媒体发送
-        url = f"https://api.telegram.org/bot{token}/sendMediaGroup"
-        data = {
-            "chat_id": chat_id,
-            "media": json.dumps(media_group)
-        }
-        return await _execute_tg_api_call(url, data=data, files=files)
+            return await _execute_tg_api_call(api_url, data=data, files=files)
 
     except Exception as e:
-        print(f"[Telegram发送多媒体错误] send_media 异常: {e}")
+        print(f"[Telegram发送图片错误] send_media 异常: {e}")
         return False
 
 async def test_telegram_connection(token: str, chat_id: str) -> bool:
@@ -290,7 +206,7 @@ async def test_telegram_connection(token: str, chat_id: str) -> bool:
 
 async def send_tweet_to_telegram(token: str, chat_id: str, text: str, media_urls: List[Dict[str, str]] = None, tweet_url: str = None) -> bool:
     """
-    向 Telegram 发送消息，完美支持文字、单图、多图（Media Group）以及视频。
+    向 Telegram 发送消息，支持纯文本、单张图片发送。
     尽可能挂载底部的“查看原文”巨型内联按钮。
     """
     if not token or not chat_id:
@@ -311,34 +227,14 @@ async def send_tweet_to_telegram(token: str, chat_id: str, text: str, media_urls
     if not media_urls:
         return await send_text_chunks(token, chat_id, text, reply_markup)
 
-    # 3. 情况 A：如果是单个媒体 (单图或单视频)，直接带按钮发送！
-    if len(media_urls) == 1:
-        if len(text) <= CAPTION_LIMIT:
-            success = await send_media(token, chat_id, text, media_urls, reply_markup)
-            if success:
-                return True
-            return await send_text_chunks(token, chat_id, text + "\n\n⚠️ (多媒体下载/发送失败，已降级为纯文本)", reply_markup)
-        else:
-            # 文本过长，先发正文（带按钮），再发单媒体
-            text_ok = await send_text_chunks(token, chat_id, text, reply_markup)
-            if not text_ok:
-                return False
-            await send_media(token, chat_id, "", media_urls)
-            return True
-
-    # 4. 情况 B：如果是多个媒体 (多图相册，Telegram 强行禁止挂载按钮)
-    # 此时我们降级在首张图的文字尾部拼接“🔗 查看原文”文本超链接
-    caption_text = text
-    if tweet_url:
-        caption_text = f"{text}\n\n🔗 <a href='{tweet_url}'>查看原文</a>"
-
-    if len(caption_text) <= CAPTION_LIMIT:
-        success = await send_media(token, chat_id, caption_text, media_urls)
+    # 3. 有图片情况：直接带按钮发送 (由于在调度器已过滤，此处必定只有一张图)
+    if len(text) <= CAPTION_LIMIT:
+        success = await send_media(token, chat_id, text, media_urls, reply_markup)
         if success:
             return True
-        return await send_text_chunks(token, chat_id, text + "\n\n⚠️ (多媒体下载/发送失败，已降级为纯文本)", reply_markup)
+        return await send_text_chunks(token, chat_id, text + "\n\n⚠️ (图片下载/发送失败，已降级为纯文本)", reply_markup)
     else:
-        # 文本过长，先发正文（带按钮），再发相册
+        # 文本过长，先发正文（带按钮），再发单图
         text_ok = await send_text_chunks(token, chat_id, text, reply_markup)
         if not text_ok:
             return False
