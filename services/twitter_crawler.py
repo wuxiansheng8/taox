@@ -139,4 +139,11 @@ async def fetch_home_tweets(username: str, password: str, email: str, proxy: str
 
     # 获取小号 Timeline（按最新排序的关注流，拉取最新 30 条）
     tweets = await client.get_latest_timeline(count=30)
+    
+    # 关键修复：抓取成功后，必须把最新的 Cookie（包含推特下发的最新 ct0 和会话标识）保存回本地，保持与官方服务器同步！
+    try:
+        client.save_cookies(cookie_path)
+    except Exception as se:
+        print(f"[爬虫警告] 账号 {username} 保存更新后的 Cookie 失败: {se}")
+        
     return tweets
