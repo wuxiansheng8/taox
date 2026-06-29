@@ -132,9 +132,8 @@ async def stream_logs(current_user: dict = Depends(get_current_user)):
     """
     async def log_generator():
         queue = asyncio.Queue()
-        # 1. 瞬间先推送内存中缓存的历史日志
-        for historical_log in list(LOG_RING_BUFFER):
-            yield f"data: {json.dumps({'log': historical_log})}\n\n"
+        # 1. 一次性打包推送内存中缓存的历史日志列表，避免前端渲染风暴
+        yield f"data: {json.dumps({'logs': list(LOG_RING_BUFFER)})}\n\n"
             
         # 2. 将当前客户端的接收队列注册进活跃监听集合
         active_log_listeners.add(queue)

@@ -540,20 +540,33 @@ createApp({
                     try {
                         const data = JSON.parse(event.data);
                         const container = logContainer.value;
-                        // 判定是否在最顶部（前10像素内），如果是则判定为需要锁定顶部展示最新日志
-                        const wasAtTop = container ? container.scrollTop < 10 : true;
 
-                        logs.value.unshift(data.log); // 新日志插到最前面
-                        
-                        // 前端展示最大限制在 1000 行，避免卡顿
-                        if (logs.value.length > 1000) {
-                            logs.value.pop(); // 移除最底部（最旧）的一行
-                        }
-                        
-                        if (wasAtTop && container) {
+                        // 1. 批量初始化历史日志 (严谨数组校验 + 提前返回)
+                        if (Array.isArray(data.logs)) {
+                            logs.value = data.logs.slice().reverse();
                             nextTick(() => {
-                                container.scrollTop = 0;
+                                if (container) container.scrollTop = 0;
                             });
+                            return;
+                        }
+
+                        // 2. 单条实时日志增量推入
+                        if (data.log) {
+                            // 判定是否在最顶部（前10像素内），如果是则判定为需要锁定顶部展示最新日志
+                            const wasAtTop = container ? container.scrollTop < 10 : true;
+                            
+                            logs.value.unshift(data.log);
+                            
+                            // 前端展示最大限制在 1000 行，避免卡顿
+                            if (logs.value.length > 1000) {
+                                logs.value.pop(); // 移除最底部（最旧）的一行
+                            }
+                            
+                            if (wasAtTop && container) {
+                                nextTick(() => {
+                                    container.scrollTop = 0;
+                                });
+                            }
                         }
                     } catch (e) {
                         console.error("解析日志事件失败:", e);
