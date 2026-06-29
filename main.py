@@ -4,6 +4,7 @@ import json
 import logging
 import asyncio
 import collections
+from logging.handlers import RotatingFileHandler
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
@@ -20,11 +21,57 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
-        logging.FileHandler(LOG_FILE, encoding="utf-8"),
+        RotatingFileHandler(LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"),
         logging.StreamHandler()
     ]
 )
 logger = logging.getLogger("taox")
+
+# 高效读取文件末尾 N 行的辅助函数，避免将整个大文件读入内存
+def read_last_lines(filepath: str, lines_count: int = 100) -> list:
+    if not os.path.exists(filepath):
+        return []
+    
+    block_size = 4096
+    lines = []
+    
+    with open(filepath, "rb") as f:
+        try:
+            f.seek(0, os.SEEK_END)
+            file_size = f.tell()
+            
+            buffer = bytearray()
+            pointer = file_size
+            
+            while pointer > 0 and len(lines) < lines_count + 1:
+                move_to = max(0, pointer - block_size)
+                read_size = pointer - move_to
+                
+                f.seek(move_to)
+                chunk = f.read(read_size)
+                
+                buffer = chunk + buffer
+                pointer = move_to
+                
+                lines = buffer.split(b'\n')
+        except Exception:
+            with open(filepath, "r", encoding="utf-8") as fallback_f:
+                all_lines = fallback_f.readlines()
+                result_lines = [line.strip() for line in all_lines if line.strip()]
+                return result_lines[-lines_count:]
+                
+    result_lines = []
+    start_idx = 0 if pointer == 0 else 1
+    
+    for line_bytes in lines[start_idx:]:
+        try:
+            decoded_line = line_bytes.decode('utf-8').strip()
+            if decoded_line:
+                result_lines.append(decoded_line)
+        except UnicodeDecodeError:
+            continue
+            
+    return result_lines[-lines_count:]
 
 # 内存环形缓冲区日志 (保留最新 1000 条，完全线程安全)
 LOG_RING_BUFFER = collections.deque(maxlen=1000)
@@ -72,14 +119,8 @@ async def get_system_logs(lines: int = Query(100, ge=1, le=1000)):
     """
     前端读取后台运行日志的接口
     """
-    if not os.path.exists(LOG_FILE):
-        return {"logs": []}
-    
     try:
-        with open(LOG_FILE, "r", encoding="utf-8") as f:
-            log_lines = f.readlines()
-        # 返回最后的 N 行日志
-        recent_logs = [line.strip() for line in log_lines[-lines:]]
+        recent_logs = read_last_lines(LOG_FILE, lines)
         return {"logs": recent_logs}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"读取日志失败: {e}")
@@ -108,7 +149,14 @@ async def stream_logs(current_user: dict = Depends(get_current_user)):
         finally:
             active_log_listeners.discard(queue)
 
-    return StreamingResponse(log_generator(), media_type="text/event-stream")
+    return StreamingResponse(
+        log_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no"
+        }
+    )
 
 @app.delete("/api/logs", dependencies=[Depends(get_current_user)])
 async def clear_system_logs():
